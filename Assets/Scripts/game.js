@@ -48,12 +48,12 @@ class GameScene extends Phaser.Scene {
 
     // This function is called one time after the preload scene, it is suitable for creating objects instances and generating the static environment
     create(){
-        cameraGameplay.setBounds(0, 0, 1600, 1600);
+        cameraGameplay.setBounds(0, 0, 1600, 1600); // set the camera border to fit in the tilemap dimensions
 
+        // #region MAP GENERATION
         // loading the tilemap
         const map = this.add.tilemap("map");
 
-        // #region MAP GENERATION
         // loading the tileset named "Tileset" in Tiled and naming it "tileset"
         const tileset = map.addTilesetImage(
                 "Tileset",
