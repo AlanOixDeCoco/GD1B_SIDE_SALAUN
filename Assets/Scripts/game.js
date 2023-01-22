@@ -16,6 +16,10 @@ var cameraGameplay, cameraHUD;
 var score = 0;
 // #endregion
 
+function DebugObstacle(){
+    console.log("Collides with obstacle!");
+}
+
 // #region GAME SCENES
 
 // This scene contains the gameplay this is the scene the player is interacting in
@@ -33,9 +37,12 @@ class GameScene extends Phaser.Scene {
 
         // importing Tiled map ...
         this.load.tilemapTiledJSON('map', 'Assets/Maps/level_00.tmj');
-        // and the corresponding tilesets
+        // and the corresponding tileset
         this.load.image('tileset', 'Assets/Maps/tileset.png');
-        this.load.spritesheet('pickables','Assets/Maps/pickables.png', { frameWidth: 32, frameHeight: 32 });
+
+        // importing spritesheets
+        this.load.spritesheet('pickables','Assets/Sprites/pickables.png', { frameWidth: 32, frameHeight: 32 }); // for the pickables
+        this.load.spritesheet('player','Assets/Sprites/player.png', { frameWidth: 32, frameHeight: 48 }); // for the player character
 
         // deactivating the scene's main camera
         this.cameras.main.setVisible(false);
@@ -65,26 +72,33 @@ class GameScene extends Phaser.Scene {
             "Walls/Walls_1",
             tileset
         );
+        wallsLayer1.setCollisionBetween(0,255);
         const wallsLayer2 = map.createLayer(
             "Walls/Walls_2",
             tileset
         );
+        wallsLayer2.setCollisionByExclusion();
         const wallsLayer3 = map.createLayer(
             "Walls/Walls_3",
             tileset
         );
+        wallsLayer3.setCollisionBetween(0,255);
 
         // then the platforms layer
         const platformsLayer = map.createLayer(
             "Platforms",
             tileset
         );
+        platformsLayer.setCollisionBetween(0,255);
 
         // and the obstacles
         const obstaclesLayer = map.createLayer(
             "Obstacles",
             tileset
         );
+        obstaclesLayer.setCollisionBetween(0,255);
+
+        this.physics.world.setBounds(0, 0, 1600, 1600);
         // #endregion
 
         // #region PICKABLES CREATION
@@ -93,19 +107,19 @@ class GameScene extends Phaser.Scene {
         this.anims.create({
             key: 'coin_0',
             frames: this.anims.generateFrameNumbers('pickables', {start:0,end:5}),
-            frameRate: 12,
+            frameRate: 10,
             repeat: -1
         });
         this.anims.create({
             key: 'coin_1',
             frames: this.anims.generateFrameNumbers('pickables', {start:6,end:11}),
-            frameRate: 12,
+            frameRate: 10,
             repeat: -1
         });
         this.anims.create({
             key: 'coin_2',
             frames: this.anims.generateFrameNumbers('pickables', {start:12,end:17}),
-            frameRate: 12,
+            frameRate: 10,
             repeat: -1
         });
 
@@ -118,9 +132,29 @@ class GameScene extends Phaser.Scene {
 
         // #endregion
 
+        // #region PLAYER CREATION
+        var player = this.physics.add.sprite(160, 1400, 'player');
+        player.setBounce(0.2);
+        player.setCollideWorldBounds(true);
+        this.physics.add.collider(player, [wallsLayer1, wallsLayer2, wallsLayer3, platformsLayer]); // add colision between player and ground surfaces
+        this.physics.add.collider(player, obstaclesLayer, DebugObstacle); // add colision between player and obstacles
+        // #endregion
+
+        // start HUD scene on top
         game.scene.start('GameHUD');
 
-        cameraGameplay.setZoom(0.2);
+        //cameraGameplay.setZoom(.2);
+        cameraGameplay.startFollow(player);
+
+        // #region DEBUG
+
+        const debugGraphics = this.add.graphics().setAlpha(0.75);
+        obstaclesLayer.renderDebug(debugGraphics, {
+            tileColor: null, // Color of non-colliding tiles
+            collidingTileColor: new Phaser.Display.Color(255, 0, 0, 64), // Color of colliding tiles
+            faceColor: new Phaser.Display.Color(255, 0, 0, 255) // Color of colliding face edges
+        });
+        // #endregion
     }
 
     update(time){
