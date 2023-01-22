@@ -35,32 +35,29 @@ class GameScene extends Phaser.Scene {
         this.load.tilemapTiledJSON('map', 'Assets/Maps/level_00.tmj');
         // and the corresponding tilesets
         this.load.image('tileset', 'Assets/Maps/tileset.png');
-        this.load.image('pickables', 'Assets/Maps/pickables.png');
+        this.load.spritesheet('pickables','Assets/Maps/pickables.png', { frameWidth: 32, frameHeight: 32 });
 
         // deactivating the scene's main camera
         this.cameras.main.setVisible(false);
         
         // creating a new camera to render the gameplay and assign it to the current scene camera filter
         cameraGameplay = this.cameras.add(0, 0, GAME_WIDTH, GAME_HEIGHT);
-        cameraGameplay.setBackgroundColor(0xFF0000);
         cameraGameplay.setRoundPixels(true);
         this.cameraFilter = cameraGameplay.id;
     }
 
     // This function is called one time after the preload scene, it is suitable for creating objects instances and generating the static environment
     create(){
+        cameraGameplay.setBounds(0, 0, 1600, 1600);
+
         // loading the tilemap
         const map = this.add.tilemap("map");
 
+        // #region MAP GENERATION
         // loading the tileset named "Tileset" in Tiled and naming it "tileset"
         const tileset = map.addTilesetImage(
                 "Tileset",
                 "tileset"
-        );
-        // same for the pickables
-        const pickables = map.addTilesetImage(
-            "Pickups",
-            "pickables"
         );
         
         // loading all the walls layers
@@ -88,20 +85,49 @@ class GameScene extends Phaser.Scene {
             "Obstacles",
             tileset
         );
+        // #endregion
 
-        // loading the pickables locations
-        const pickablesLayer = map.createLayer(
-            "Pickups",
-            pickables
-        );
+        // #region PICKABLES CREATION
+
+        // creating the pickables animations
+        this.anims.create({
+            key: 'coin_0',
+            frames: this.anims.generateFrameNumbers('pickables', {start:0,end:5}),
+            frameRate: 12,
+            repeat: -1
+        });
+        this.anims.create({
+            key: 'coin_1',
+            frames: this.anims.generateFrameNumbers('pickables', {start:6,end:11}),
+            frameRate: 12,
+            repeat: -1
+        });
+        this.anims.create({
+            key: 'coin_2',
+            frames: this.anims.generateFrameNumbers('pickables', {start:12,end:17}),
+            frameRate: 12,
+            repeat: -1
+        });
+
+        // spawning the pickables
+        const pickables = map.createFromObjects("Pickables");
+        pickables.forEach(pickable => {
+            pickable.y += 32; // --> offset due to the Tiled origin
+            pickable.anims.play(pickable.name); // --> display the right animation based on the object name
+        });
+
+        // #endregion
 
         game.scene.start('GameHUD');
+
+        cameraGameplay.scrollY = (128);
+        cameraGameplay.setZoom(0.2);
     }
 
     update(time){
         // Input handling at first
         
-        // Then calling the desired functions
+        // Then calling the needed functions
     }
 }
 
@@ -130,7 +156,6 @@ class GameHUDScene extends Phaser.Scene {
     // This function is called one time after the preload scene, it is suitable for creating objects instances and generating the static environment
     create(){
         this.fpsText = this.add.bitmapText(10, 10, 'CursedScript', 'FPS: ', FONT_SIZE_TITLE).setTint(0xFFFFFF);
-        cameraGameplay.scrollY = (300);
     }
 
     update(time){
@@ -151,7 +176,7 @@ const config = {
         default: 'arcade',
         arcade: {
             gravity: { y: 981 }, // 9,81 m.s-2 sur Terre
-            debug: false
+            debug: true
         }
     },
     render: {
