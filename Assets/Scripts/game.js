@@ -120,7 +120,6 @@ class GameScene extends Phaser.Scene {
 
         game.scene.start('GameHUD');
 
-        cameraGameplay.scrollY = (128);
         cameraGameplay.setZoom(0.2);
     }
 
