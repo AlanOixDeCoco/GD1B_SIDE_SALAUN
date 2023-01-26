@@ -181,6 +181,8 @@ class GameScene extends Phaser.Scene {
         // keyboard events
         this.input.keyboard.on('keydown', onKey);
         this.input.keyboard.on('keyup', onKey);
+
+        
     }
 
     update(time){
