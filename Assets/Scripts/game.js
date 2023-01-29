@@ -1,7 +1,9 @@
 // #region CONSTANTS
-const DEBUG = false;
+const DEBUG = true;
 
 const INPUT_ZERO_TOLERANCE = 0.1;
+
+const GRAVITY = 24 ; // (acceleration expressed in m.s-2)
 
 const TILE_SIZE = 32;
 
@@ -17,13 +19,16 @@ const PALETTE_COLOR = 0x000000;
 // #region GAME VARIABLES
 var player;
 var accelerationForce = 1024;
-var jumpForce = 320;
+var jumpForce = 10 * TILE_SIZE;
+var jumpHeight = 2 * TILE_SIZE;
 var dragForce = 800;
 var maxSpeed = 128;
 
 var inputX = 0;
-var inputJump = 0;
+var inputJump = false;
 
+var canJump = false;
+var isJumping = false;
 
 var cameraGameplay, cameraHUD;
 
@@ -165,17 +170,21 @@ class GameScene extends Phaser.Scene {
         // #endregion
 
         // #region PLAYER CREATION
-        player = this.physics.add.sprite(120, 1300, 'player');
-        player.setBounce(0.2);
+        player = this.physics.add.sprite(120, 1400, 'player');
         player.setCollideWorldBounds(true);
-        this.physics.add.collider(player, [wallsLayer1, wallsLayer2, wallsLayer3, platformsLayer]); // add colision between player and ground surfaces
+        this.physics.add.collider(player, [wallsLayer1, wallsLayer2, wallsLayer3, platformsLayer], () => { // add colision between player and ground surfaces
+            canJump = player.body.blocked.down;
+        }); 
         this.physics.add.collider(player, obstaclesLayer, () => {
             if(DEBUG) DebugObstacle();
         }); 
         player.setMaxVelocity(maxSpeed, 9999);
         player.setDragX(dragForce);
         // add colision between player and obstacles
-        this.physics.add.overlap(player, pickables, () => {console.log("Take coin!")});
+        this.physics.add.overlap(player, pickables, () => {
+            if(DEBUG)
+                console.log("Take coin!")
+        });
         // #endregion
 
         // start HUD scene on top
@@ -206,14 +215,20 @@ class GameScene extends Phaser.Scene {
 
     update(time){
         // Input handling through events
-        console.log(`${inputX} / ${inputJump}`);
-
-        // Then apply inputs
+        
+        // Horizontal movement
         player.body.setAccelerationX(inputX * accelerationForce);
 
-        if(inputJump && player.body.blocked.down)
-            player.body.setVelocityY(inputJump * -jumpForce);
-        
+        if(canJump){
+            canJump = false;
+            isJumping = true;
+            player.body.setVelocityY(-inputJump * jumpForce);
+            player.yJump = player.body.y - jumpHeight; // we store the y pos of the player before he jumps
+        }
+
+        isJumping = (-player.body.velocity.y > 0) && isJumping; // calculates if the player is still jumping
+            
+        console.log(`isJumping: ${isJumping}`);
     }
 }
 
@@ -316,12 +331,14 @@ function onGamepadDisconnect(){
 
 function onButton(){
     inputX = gamepadButtons.right.pressed - gamepadButtons.left.pressed;
-    inputJump = + gamepadButtons.jump.pressed; // + converts bool to int
+    inputJump = gamepadButtons.jump.pressed; // + converts bool to int
+    isJumping = false; // resets the isJumping value --> If we are jumping, we released the button, if we were about to jump, the jump will turn it back true
 }
 
 function onKey(){
     inputX = keyboardKeys.right.isDown - keyboardKeys.left.isDown;
-    inputJump = + keyboardKeys.jump.isDown; // + converts bool to int
+    inputJump = keyboardKeys.jump.isDown; // + converts bool to int
+    isJumping = false;
 }
 
 //function onKeyDown()
@@ -335,7 +352,7 @@ const config = {
     physics: {
         default: 'arcade',
         arcade: {
-            gravity: { y: 981 }, // 9,81 m.s-2 sur Terre
+            gravity: { y: GRAVITY * TILE_SIZE }, // gravity (m.s-2) * tile size (px.m-1) --> px.s-2
             debug: DEBUG
         }
     },
