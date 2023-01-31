@@ -201,7 +201,7 @@ class GameScene extends Phaser.Scene {
                 faceColor: new Phaser.Display.Color(255, 0, 0, 255) // Color of colliding face edges
             });
         }
-        cameraGameplay.startFollow(player, false, 0.1, 0.1);
+        cameraGameplay.startFollow(player, true, 0.1, 0.1);
 
         
         // #endregion
