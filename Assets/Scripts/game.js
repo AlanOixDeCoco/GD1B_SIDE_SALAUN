@@ -163,9 +163,9 @@ class GameScene extends Phaser.Scene {
             pickable.anims.play(pickable.name); // --> display the right animation based on the object name
         });
 
-        const stars = this.physics.add.staticGroup();
+        const coins = this.physics.add.staticGroup();
         pickables.forEach((pickable) => {
-            stars.add(pickable);
+            coins.add(pickable);
         });
         // #endregion
 
@@ -183,7 +183,7 @@ class GameScene extends Phaser.Scene {
         // add colision between player and obstacles
         this.physics.add.overlap(player, pickables, () => {
             if(DEBUG)
-                console.log("Take coin!")
+                console.log("Take pickable!")
         });
         // #endregion
 
