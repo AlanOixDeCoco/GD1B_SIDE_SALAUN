@@ -67,6 +67,45 @@ class GameScene extends Phaser.Scene {
 
     // This function is called one time after the preload scene, it is suitable for creating objects instances and generating the static environment
     create(){
+        // #region ANIMATIONS
+        // pickables
+        this.anims.create({
+            key: 'coin_0',
+            frames: this.anims.generateFrameNumbers('pickables', {start:0,end:5}),
+            frameRate: 10,
+            repeat: -1
+        });
+        this.anims.create({
+            key: 'coin_1',
+            frames: this.anims.generateFrameNumbers('pickables', {start:6,end:11}),
+            frameRate: 10,
+            repeat: -1
+        });
+        this.anims.create({
+            key: 'coin_2',
+            frames: this.anims.generateFrameNumbers('pickables', {start:12,end:17}),
+            frameRate: 10,
+            repeat: -1
+        });
+
+        // player
+        this.anims.create({
+            key: 'player_move',
+            frames: this.anims.generateFrameNumbers('player', {start: 0, end: 0})
+        });
+        this.anims.create({
+            key: 'player_jump',
+            frames: this.anims.generateFrameNumbers('player', {start: 2, end: 2})
+        });
+        this.anims.create({
+            key: 'player_invincible',
+            frames: this.anims.generateFrameNumbers('player', {start: 0, end: 1}),
+            frameRate: 8,
+            repeat: -1
+        });
+        // #endregion
+
+
         // deactivating the scene's main camera
         this.cameras.main.setVisible(false);
         
@@ -137,26 +176,6 @@ class GameScene extends Phaser.Scene {
         // #endregion
 
         // #region PICKABLES CREATION
-        // creating the pickables animations
-        this.anims.create({
-            key: 'coin_0',
-            frames: this.anims.generateFrameNumbers('pickables', {start:0,end:5}),
-            frameRate: 10,
-            repeat: -1
-        });
-        this.anims.create({
-            key: 'coin_1',
-            frames: this.anims.generateFrameNumbers('pickables', {start:6,end:11}),
-            frameRate: 10,
-            repeat: -1
-        });
-        this.anims.create({
-            key: 'coin_2',
-            frames: this.anims.generateFrameNumbers('pickables', {start:12,end:17}),
-            frameRate: 10,
-            repeat: -1
-        });
-
         // spawning the pickables
         const pickables = map.createFromObjects("Pickables");
         pickables.forEach(pickable => {
@@ -171,21 +190,6 @@ class GameScene extends Phaser.Scene {
         // #endregion
 
         // #region PLAYER CREATION
-        this.anims.create({
-            key: 'player_move',
-            frames: this.anims.generateFrameNumbers('player', {start: 0, end: 0})
-        });
-        this.anims.create({
-            key: 'player_jump',
-            frames: this.anims.generateFrameNumbers('player', {start: 2, end: 2})
-        });
-        this.anims.create({
-            key: 'player_invincible',
-            frames: this.anims.generateFrameNumbers('player', {start: 0, end: 1}),
-            frameRate: 4,
-            repeat: -1
-        });
-
         player = this.physics.add.sprite(120, 1400, 'player', 0);
         player.setCollideWorldBounds(true);
         this.physics.add.collider(player, [wallsLayer1, wallsLayer2, wallsLayer3, platformsLayer], () => { // add colision between player and ground surfaces
@@ -217,7 +221,7 @@ class GameScene extends Phaser.Scene {
                 faceColor: new Phaser.Display.Color(255, 0, 0, 255) // Color of colliding face edges
             });
         }
-        cameraGameplay.startFollow(player, true, 0.1, 0.1);
+        cameraGameplay.startFollow(player, false, 0.4, 0.4);
 
         
         // #endregion
@@ -360,10 +364,10 @@ function onKey(){
 function HandlePlayerSprite(){
     isMovingVertically = player.body.velocity.y != 0; // calculates if the player is moving on the y axis
     if(isMovingVertically){
-        player.anims.play("player_jump");
+        player.anims.play("player_jump", true);
     }
     else {
-        player.anims.play("player_invincible");
+        player.anims.play("player_move", true);
     }
 
     if(player.body.velocity.x < 0){

@@ -11,10 +11,19 @@ html, body {
 
 #game_viewport{
     background: #00000000;
-    width: 90vmin;
-    border-radius: 2vmin;
     overflow: hidden;
     height: fit-content;
+}
+
+@media (max-aspect-ratio: 1/1) {
+    #game_viewport{
+        width: 100vw;
+    }
+}
+@media (min-aspect-ratio: 1/1) {
+    #game_viewport{
+        width: calc(100vh * (3/2));
+    }
 }
 
 canvas {
