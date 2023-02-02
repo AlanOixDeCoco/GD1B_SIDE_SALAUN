@@ -1,5 +1,5 @@
 // #region CONSTANTS
-const DEBUG = false;
+const DEBUG = true;
 
 const INPUT_ZERO_TOLERANCE = 0.1;
 
@@ -38,6 +38,11 @@ var keyboardKeys;
 var gamepadConnected = false;
 var gamepad;
 var gamepadButtons;
+
+// UI
+var ui_coin;
+var ui_hearths;
+var ui_coinText;
 // #endregion
 
 // #region GAME SCENES
@@ -67,6 +72,14 @@ class GameScene extends Phaser.Scene {
 
     // This function is called one time after the preload scene, it is suitable for creating objects instances and generating the static environment
     create(){
+        // deactivating the scene's main camera
+        this.cameras.main.setVisible(false);
+        
+        // creating a new camera to render the gameplay
+        cameraGameplay = this.cameras.add(0, 0, GAME_WIDTH, GAME_HEIGHT);
+        cameraGameplay.setRoundPixels(true);
+        cameraGameplay.setBounds(0, 0, 1600, 1600); // set the camera border to fit in the tilemap dimensions
+
         // #region ANIMATIONS
         // pickables
         this.anims.create({
@@ -103,17 +116,9 @@ class GameScene extends Phaser.Scene {
             frameRate: 8,
             repeat: -1
         });
+
+
         // #endregion
-
-
-        // deactivating the scene's main camera
-        this.cameras.main.setVisible(false);
-        
-        // creating a new camera to render the gameplay and assign it to the current scene camera filter
-        cameraGameplay = this.cameras.add(0, 0, GAME_WIDTH, GAME_HEIGHT);
-        cameraGameplay.setRoundPixels(true);
-        this.cameraFilter = cameraGameplay.id;
-        cameraGameplay.setBounds(0, 0, 1600, 1600); // set the camera border to fit in the tilemap dimensions
 
         // setup the controller state events
         this.input.gamepad.on('connected', () => {
@@ -194,10 +199,10 @@ class GameScene extends Phaser.Scene {
         player.setCollideWorldBounds(true);
         this.physics.add.collider(player, [wallsLayer1, wallsLayer2, wallsLayer3, platformsLayer], () => { // add colision between player and ground surfaces
             canJump = player.body.blocked.down;
-        }); 
+        });
         this.physics.add.collider(player, obstaclesLayer, () => {
             if(DEBUG) DebugObstacle();
-        }); 
+        });
         player.setMaxVelocity(maxSpeed, 9999);
         player.setDragX(dragForce);
         // add colision between player and obstacles
@@ -264,27 +269,84 @@ class GameHUDScene extends Phaser.Scene {
 
         // importing custom fonts
         this.load.bitmapFont('CursedScript', 'Assets/Fonts/CursedScript.png', 'Assets/Fonts/CursedScript.fnt');
-    
-        // deactivating the scene's main camera
-        this.cameras.main.setVisible(false);
 
-        // creating a new camera to render the HUD and assign it to the current scene camera filter
-        cameraHUD = this.cameras.add(0, 0, GAME_WIDTH, GAME_HEIGHT);
-        cameraHUD.setRoundPixels(true);
-        this.cameraFilter = cameraHUD.id;
+        // importing the UI spritesheets
+        this.load.spritesheet('ui_hearths','Assets/Sprites/ui_hearthSpinningSpritesheet.png', { frameWidth: 67, frameHeight: 18 }); // spinning hearths
+        this.load.spritesheet('ui_coin','Assets/Sprites/ui_coinSpinningSpritesheet.png', { frameWidth: 32, frameHeight: 32 }); // spinning coin
+        
     }
 
     // This function is called one time after the preload scene, it is suitable for creating objects instances and generating the static environment
     create(){
+        // deactivating the scene's main camera
+        this.cameras.main.setVisible(false);
+
+        // creating a new camera to render the HUD
+        cameraHUD = this.cameras.add(0, 0, GAME_WIDTH, GAME_HEIGHT);
+        cameraHUD.setRoundPixels(true);
+
+        //#region ANIMATIONS
+        //#region Hearth UI
+        this.anims.create({
+            key: 'ui_hearths_3',
+            frames: this.anims.generateFrameNumbers('ui_hearths', {start: 0, end: 3}),
+            frameRate: 6,
+            repeat: -1
+        });
+        this.anims.create({
+            key: 'ui_hearths_2',
+            frames: this.anims.generateFrameNumbers('ui_hearths', {start: 4, end: 7}),
+            frameRate: 6,
+            repeat: -1
+        });
+        this.anims.create({
+            key: 'ui_hearths_1',
+            frames: this.anims.generateFrameNumbers('ui_hearths', {start: 8, end: 11}),
+            frameRate: 6,
+            repeat: -1
+        });
+        //#endregion
+
+        //#region Coin UI
+        this.anims.create({
+            key: 'ui_coin',
+            frames: this.anims.generateFrameNumbers('ui_coin', {start: 0, end: 5}),
+            frameRate: 6,
+            repeat: -1
+        });
+        //#endregion
+
+        //#endregion
+
+        // #region UI SPRITES
+        ui_coin = this.add.sprite(8, 8).play('ui_coin');
+        ui_coin.setOrigin(0, 0);
         
+        ui_hearths = this.add.sprite(96, 15).play('ui_hearths_1');
+        ui_hearths.setOrigin(0, 0);
+        // #endregion
+
+        //#region UI TEXT
+        ui_coinText = this.add.bitmapText(48, 10, 'CursedScript', '08', FONT_SIZE_TITLE).setTint(0xFFFFFF);
+        ui_coinText.setOrigin(0, 0);
+        //#endregion
     }
 
     update(time){
         // Input handling at first
         // --> The HUD scene focuses on UI controls (pause, settings buttons, ...)
-
+        updateCoinText(3);
         // Then calling the desired functions
     }
+
+    
+}
+
+function updateCoinText(amount) {
+    var coinText = "";
+    if(String(amount).length < 2) coinText += "0";
+    coinText += String(amount);
+    ui_coinText.setText(coinText);
 }
 
 // This scene contains the game HUD, it is used to display informations to the player while keeping this logic away from the gameplay
@@ -299,14 +361,11 @@ class DebugScene extends Phaser.Scene {
     // This function is called one time at the beginning of scene start, it is suitable for assets loading
     preload(){
         console.log("Loading debug scene...");
-
-        // importing custom fonts
-        this.load.bitmapFont('CursedScript', 'Assets/Fonts/CursedScript.png', 'Assets/Fonts/CursedScript.fnt');
     }
 
     // This function is called one time after the preload scene, it is suitable for creating objects instances and generating the static environment
     create(){
-        this.fpsText = this.add.bitmapText(8, 2, 'CursedScript', 'FPS: ', FONT_SIZE_TITLE).setTint(0xFFFFFF);
+        this.fpsText = this.add.bitmapText(8, GAME_HEIGHT - 32, 'CursedScript', 'FPS: ', FONT_SIZE_TITLE).setTint(0xFFFFFF);
     }
 
     update(time){
