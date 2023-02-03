@@ -1,9 +1,9 @@
 // #region CONSTANTS
-const DEBUG = true;
+const DEBUG = false;
 
 const INPUT_ZERO_TOLERANCE = 0.1;
 
-const GRAVITY = 24 ; // (acceleration expressed in m.s-2)
+const GRAVITY = 32 ; // (acceleration expressed in m.s-2)
 
 const TILE_SIZE = 32;
 
@@ -13,16 +13,22 @@ const GAME_HEIGHT = 320;
 const FONT_SIZE_TITLE = 24;
 const FONT_SIZE_PARAGRAPH = 12;
 
-const PALETTE_COLOR = 0x000000;
+const CAMERA_VERTICAL_SMOOTH = 0.1; // value between 0 - 1(no smoothing)
+const CAMERA_HORIZONTAL_SMOOTH = 0.1;
+
+const PICK_FEEDBACK_TIMEOUT = 1 * 1000; // text feedback duration in miliseconds
+const PICK_FEEDBACK_DISTANCE = 12; // text movement distance
+const PICK_FEEDBACK_FRAMES = 6; // text movement frames
+
+const COIN_FEEDBACK_TEXT = "+1";
 // #endregion
 
 // #region GAME VARIABLES
 var player;
-var accelerationForce = 1024;
-var jumpForce = 10 * TILE_SIZE;
-var jumpHeight = 2 * TILE_SIZE;
+var accelerationForce = 1200;
+var jumpForce = 11 * TILE_SIZE;
 var dragForce = 800;
-var maxSpeed = 128;
+var maxSpeed = 150;
 
 var inputX = 0;
 var inputJump = false;
@@ -38,6 +44,8 @@ var keyboardKeys;
 var gamepadConnected = false;
 var gamepad;
 var gamepadButtons;
+
+var coinsAmount = 0;
 
 // UI
 var ui_coin;
@@ -60,6 +68,10 @@ class GameScene extends Phaser.Scene {
         // importing custom fonts
         this.load.bitmapFont('CursedScript', 'Assets/Fonts/CursedScript.png', 'Assets/Fonts/CursedScript.fnt');
 
+        // importing backgrounds
+        this.load.image('background_m2', 'Assets/Sprites/background_-2.png');
+        this.load.image('background_m1', 'Assets/Sprites/background_-1.png');
+
         // importing Tiled map ...
         this.load.tilemapTiledJSON('map', 'Assets/Maps/level_00.tmj');
         // and the corresponding tileset
@@ -72,32 +84,30 @@ class GameScene extends Phaser.Scene {
 
     // This function is called one time after the preload scene, it is suitable for creating objects instances and generating the static environment
     create(){
-        // deactivating the scene's main camera
-        this.cameras.main.setVisible(false);
-        
         // creating a new camera to render the gameplay
-        cameraGameplay = this.cameras.add(0, 0, GAME_WIDTH, GAME_HEIGHT);
+        cameraGameplay = this.cameras.main;
         cameraGameplay.setRoundPixels(true);
         cameraGameplay.setBounds(0, 0, 1600, 1600); // set the camera border to fit in the tilemap dimensions
+        cameraGameplay.setBackgroundColor(0xFF0000);
 
         // #region ANIMATIONS
         // pickables
         this.anims.create({
             key: 'coin_0',
             frames: this.anims.generateFrameNumbers('pickables', {start:0,end:5}),
-            frameRate: 10,
+            frameRate: 8,
             repeat: -1
         });
         this.anims.create({
             key: 'coin_1',
             frames: this.anims.generateFrameNumbers('pickables', {start:6,end:11}),
-            frameRate: 10,
+            frameRate: 8,
             repeat: -1
         });
         this.anims.create({
             key: 'coin_2',
             frames: this.anims.generateFrameNumbers('pickables', {start:12,end:17}),
-            frameRate: 10,
+            frameRate: 8,
             repeat: -1
         });
 
@@ -116,8 +126,6 @@ class GameScene extends Phaser.Scene {
             frameRate: 8,
             repeat: -1
         });
-
-
         // #endregion
 
         // setup the controller state events
@@ -129,24 +137,33 @@ class GameScene extends Phaser.Scene {
 
         // setup the keys
         keyboardKeys = this.input.keyboard.addKeys({
-            up: Phaser.Input.Keyboard.KeyCodes.Z, 
             left: Phaser.Input.Keyboard.KeyCodes.Q, 
+            left_arrow: Phaser.Input.Keyboard.KeyCodes.LEFT, 
             down: Phaser.Input.Keyboard.KeyCodes.S, 
+            down_arrow: Phaser.Input.Keyboard.KeyCodes.DOWN, 
             right: Phaser.Input.Keyboard.KeyCodes.D, 
-            jump: Phaser.Input.Keyboard.KeyCodes.SPACE
+            right_arrow: Phaser.Input.Keyboard.KeyCodes.RIGHT, 
+            jump: Phaser.Input.Keyboard.KeyCodes.SPACE,
+            jump_arrow: Phaser.Input.Keyboard.KeyCodes.UP, 
         });
 
         // #region MAP GENERATION
-        // loading the tilemap
+        // create the backgrounds
+        const backgroundM2 = this.add.image(0, 0, 'background_m2'); // background (-2 layer)
+        backgroundM2.setOrigin(0, 0);
+        const backgroundM1 = this.add.image(0, 0, 'background_m1'); // background (-1 layer)
+        backgroundM1.setOrigin(0, 0);
+
+        // create the tilemap
         const map = this.add.tilemap("map");
 
-        // loading the tileset named "Tileset" in Tiled and naming it "tileset"
+        // create the tileset named "Tileset" in Tiled and naming it "tileset"
         const tileset = map.addTilesetImage(
                 "Tileset",
                 "tileset"
         );
         
-        // loading all the walls layers
+        // create all the walls layers
         const wallsLayer1 = map.createLayer(
             "Walls/Walls_1",
             tileset
@@ -191,11 +208,12 @@ class GameScene extends Phaser.Scene {
         const coins = this.physics.add.staticGroup();
         pickables.forEach((pickable) => {
             coins.add(pickable);
+            pickable.body.setSize(16, 16);
         });
         // #endregion
 
         // #region PLAYER CREATION
-        player = this.physics.add.sprite(120, 1400, 'player', 0);
+        player = this.physics.add.sprite(120, 1440, 'player', 0);
         player.setCollideWorldBounds(true);
         this.physics.add.collider(player, [wallsLayer1, wallsLayer2, wallsLayer3, platformsLayer], () => { // add colision between player and ground surfaces
             canJump = player.body.blocked.down;
@@ -205,17 +223,41 @@ class GameScene extends Phaser.Scene {
         });
         player.setMaxVelocity(maxSpeed, 9999);
         player.setDragX(dragForce);
-        // add colision between player and obstacles
-        this.physics.add.overlap(player, pickables, () => {
-            if(DEBUG)
-                console.log("Take pickable!")
+        player.body.setSize(8, 56);
+        player.body.setOffset(12, 8);
+
+        // add colision between player and pickables
+        this.physics.add.overlap(player, pickables, (player_ctx, pickable_ctx) => {
+            pickable_ctx.destroy();
+            var textFeedback = "";
+            var feedbackColor = 0xFFFFFF;
+            if(pickable_ctx.name.includes("coin")){
+                textFeedback = "+1";
+                coinsAmount++;
+                UpdateCoinText();
+            }
+            switch(pickable_ctx.name){
+                case "coin_0":
+                    feedbackColor = 0xFBFF0D;
+                    break;
+                case "coin_1":
+                    feedbackColor = 0xFF844F;
+                    break;
+                case "coin_2":
+                    feedbackColor = 0xFAFF06;
+                    break;
+                default:
+                    feedbackColor = 0xFFFFFF;
+                    break;
+            }
+            this.DisplayTextFeedback(pickable_ctx.x, pickable_ctx.y, textFeedback, feedbackColor);
         });
         // #endregion
 
         // start HUD scene on top
         game.scene.start('GameHUD');
 
-        // Debug
+        // #region Debug
         if(DEBUG){
             game.scene.start('Debug');
 
@@ -226,16 +268,31 @@ class GameScene extends Phaser.Scene {
                 faceColor: new Phaser.Display.Color(255, 0, 0, 255) // Color of colliding face edges
             });
         }
-        cameraGameplay.startFollow(player, false, 0.4, 0.4);
-
-        
         // #endregion
 
         // keyboard events
         this.input.keyboard.on('keydown', onKey);
         this.input.keyboard.on('keyup', onKey);
 
-        
+        cameraGameplay.startFollow(player, false, CAMERA_HORIZONTAL_SMOOTH, CAMERA_VERTICAL_SMOOTH);
+        cameraGameplay.setZoom(1);
+
+        //#region GameplayScene functions
+        // Displays a text feedback inside the scene to 
+        this.DisplayTextFeedback = (x, y, text, color=0xFFFFFF) => {
+            var new_textFeedback = this.add.bitmapText(x, y, 'CursedScript', text, FONT_SIZE_PARAGRAPH).setTint(color);
+            new_textFeedback.setDropShadow(1, 1, 0x000000, 1);
+            new_textFeedback.setDepth(10);
+            // executed until destruction (see setTimeout)
+            setInterval(() => {
+                new_textFeedback.setY(new_textFeedback.y - (PICK_FEEDBACK_DISTANCE/PICK_FEEDBACK_FRAMES));
+            }, PICK_FEEDBACK_TIMEOUT/PICK_FEEDBACK_FRAMES);
+            // destroys the text feedback after some amount of time
+            setTimeout(() => {
+                new_textFeedback.destroy();
+            }, PICK_FEEDBACK_TIMEOUT);
+        }
+        //#endregion
     }
 
     update(time){
@@ -248,12 +305,13 @@ class GameScene extends Phaser.Scene {
             canJump = false;
             isJumping = true;
             player.body.setVelocityY(-inputJump * jumpForce);
-            player.yJump = player.body.y - jumpHeight; // we store the y pos of the player before he jumps
         }
 
         isJumping = (-player.body.velocity.y > 0) && isJumping; // calculates if the player is still jumping
         
         HandlePlayerSprite();
+
+        this.MoveParallax(player);
     }
 }
 
@@ -278,11 +336,8 @@ class GameHUDScene extends Phaser.Scene {
 
     // This function is called one time after the preload scene, it is suitable for creating objects instances and generating the static environment
     create(){
-        // deactivating the scene's main camera
-        this.cameras.main.setVisible(false);
-
         // creating a new camera to render the HUD
-        cameraHUD = this.cameras.add(0, 0, GAME_WIDTH, GAME_HEIGHT);
+        cameraHUD = this.cameras.main;
         cameraHUD.setRoundPixels(true);
 
         //#region ANIMATIONS
@@ -311,7 +366,7 @@ class GameHUDScene extends Phaser.Scene {
         this.anims.create({
             key: 'ui_coin',
             frames: this.anims.generateFrameNumbers('ui_coin', {start: 0, end: 5}),
-            frameRate: 6,
+            frameRate: 8,
             repeat: -1
         });
         //#endregion
@@ -322,31 +377,24 @@ class GameHUDScene extends Phaser.Scene {
         ui_coin = this.add.sprite(8, 8).play('ui_coin');
         ui_coin.setOrigin(0, 0);
         
-        ui_hearths = this.add.sprite(96, 15).play('ui_hearths_1');
+        ui_hearths = this.add.sprite(96, 15).play('ui_hearths_3');
         ui_hearths.setOrigin(0, 0);
         // #endregion
 
         //#region UI TEXT
-        ui_coinText = this.add.bitmapText(48, 10, 'CursedScript', '08', FONT_SIZE_TITLE).setTint(0xFFFFFF);
+        ui_coinText = this.add.bitmapText(48, 10, 'CursedScript', '00', FONT_SIZE_TITLE).setTint(0xFFFFFF);
         ui_coinText.setOrigin(0, 0);
+        ui_coinText.setDropShadow(2, 2, 0x000000, 1);
         //#endregion
     }
 
     update(time){
         // Input handling at first
         // --> The HUD scene focuses on UI controls (pause, settings buttons, ...)
-        updateCoinText(3);
         // Then calling the desired functions
     }
 
     
-}
-
-function updateCoinText(amount) {
-    var coinText = "";
-    if(String(amount).length < 2) coinText += "0";
-    coinText += String(amount);
-    ui_coinText.setText(coinText);
 }
 
 // This scene contains the game HUD, it is used to display informations to the player while keeping this logic away from the gameplay
@@ -415,8 +463,8 @@ function onButton(){
 }
 
 function onKey(){
-    inputX = keyboardKeys.right.isDown - keyboardKeys.left.isDown;
-    inputJump = keyboardKeys.jump.isDown; // + converts bool to int
+    inputX = (keyboardKeys.right.isDown || keyboardKeys.right_arrow.isDown) - (keyboardKeys.left.isDown || keyboardKeys.left_arrow.isDown);
+    inputJump = (keyboardKeys.jump.isDown || keyboardKeys.jump_arrow.isDown); // + converts bool to int
     isJumping = false;
 }
 
@@ -435,9 +483,16 @@ function HandlePlayerSprite(){
     else if(player.body.velocity.x > 0){
         player.setFlipX(false);
     }
-
-    
 }
+
+function UpdateCoinText() {
+    var coinText = "";
+    if(String(coinsAmount).length < 2) coinText += "0";
+    coinText += String(coinsAmount);
+    ui_coinText.setText(coinText);
+}
+
+
 // #endregion
 
 // #region GAME CONFIGURATION
