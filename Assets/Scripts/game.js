@@ -311,7 +311,7 @@ class GameScene extends Phaser.Scene {
         
         HandlePlayerSprite();
 
-        this.MoveParallax(player);
+        //this.MoveParallax(player);
     }
 }
 
