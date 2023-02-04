@@ -247,7 +247,9 @@ class GameScene extends Phaser.Scene {
         player = this.physics.add.sprite(120, 1440, 'player', 0);
         player.setCollideWorldBounds(true);
         this.physics.add.collider(player, [wallsLayer1, wallsLayer2, wallsLayer3, platformsLayer], () => { // add colision between player and ground surfaces
-            canJump = player.body.blocked.down;
+            if(player.body.blocked.down){
+                canJump = true;
+            }
         });
         this.physics.add.collider(player, obstaclesLayer, () => {
             if(DEBUG) DebugObstacle();
@@ -339,17 +341,14 @@ class GameScene extends Phaser.Scene {
         // Horizontal movement
         player.body.setAccelerationX(inputX * accelerationForce);
 
-        if(canJump){
-            canJump = false;
-            isJumping = true;
-            
+        
+
+        if(inputJump){
+            if(canJump){
+                canJump = false;
+                player.body.setVelocityY(-inputJump * jumpForce);
+            }
         }
-
-        isJumping = inputJump;
-        if(isJumping)
-            player.body.setVelocityY(-inputJump * jumpForce);
-
-        isJumping = (-player.body.velocity.y > 0) && isJumping; // calculates if the player is still jumping
         
         HandlePlayerSprite();
 
