@@ -22,9 +22,13 @@ const PICK_FEEDBACK_TIMEOUT = 1 * 1000; // text feedback duration in miliseconds
 const PICK_FEEDBACK_DISTANCE = 12; // text movement distance
 const PICK_FEEDBACK_FRAMES = 6; // text movement frames
 
+const INVINCIBLE_DURATION = 1.5 * 1000;
+
 const COIN_FEEDBACK_TEXT = "+1";
+const ENNEMY_FEEDBACK_TEXT = "-1HP"
 
 const TINT_BACKGROUND = 0x666666;
+const TINT_DAMAGE = 0xFF0000;
 
 const COLORMASK_BACKGROUND_LAYER1 = 0x000000;
 const COLORMASK_BACKGROUND_LAYER2 = 0x444444;
@@ -33,7 +37,7 @@ const COLORMASK_BACKGROUND_LAYER2 = 0x444444;
 // #region VARIABLES
 var player;
 var accelerationForce = 1200;
-var jumpForce = 11 * TILE_SIZE;
+var jumpForce = 10 * TILE_SIZE;
 var dragForce = 800;
 var maxSpeed = 150;
 
@@ -48,7 +52,7 @@ var cameraGameplay, cameraHUD; // the 2 cameras
 
 var keyboardKeys;
 
-var gamepadConnected = false;
+var isGamepadConnected = false;
 var gamepad; // stores used controller
 var gamepadButtons; // assigned when a device is connected
 
@@ -59,6 +63,8 @@ var backgroundM2; // -2 layer background
 var backgroundM0; // -0 layer background
 
 var coinsAmount = 0;
+var hearthAmount = 3;
+var isInvincible = false;
 
 // UI
 var ui_coin;
@@ -71,7 +77,7 @@ var ui_coinText;
 // This scene contains the gameplay this is the scene the player is interacting in
 class GameScene extends Phaser.Scene {
     constructor (){
-        super({key: 'Game', active: true});
+        super({key: 'GameScene', active: true});
     }
 
     // This function is called one time at the beginning of scene start, it is suitable for assets loading
@@ -96,6 +102,7 @@ class GameScene extends Phaser.Scene {
         // importing spritesheets
         this.load.spritesheet('pickables','Assets/Sprites/pickablesSpritesheet.png', { frameWidth: 32, frameHeight: 32 }); // for the pickables
         this.load.spritesheet('player','Assets/Sprites/playerSpritesheet.png', { frameWidth: 32, frameHeight: 64 }); // for the player character
+        this.load.spritesheet('ennemies','Assets/Sprites/ennemiesSpritesheet.png', { frameWidth: 32, frameHeight: 32 }); // for the ennemy
     }
 
     // This function is called one time after the preload scene, it is suitable for creating objects instances and generating the static environment
@@ -142,6 +149,14 @@ class GameScene extends Phaser.Scene {
             frameRate: 8,
             repeat: -1
         });
+
+        // ennemy
+        this.anims.create({
+            key: 'ennemy_0',
+            frames: this.anims.generateFrameNumbers('ennemies', {start: 0, end: 3}),
+            frameRate: 5,
+            repeat: -1
+        });
         // #endregion
 
         // setup the controller state events
@@ -164,7 +179,7 @@ class GameScene extends Phaser.Scene {
         });
 
         // #region MAP GENERATION
-        // create the backgrounds
+        //#region BACKGROUNDS
         backgroundStars = this.add.image(0, 0, 'background_stars').setOrigin(0, 0); // background (-3 layer)
 
         backgroundM2 = this.add.image(0, 0, 'background_m2').setOrigin(0, 0); // background (-2 layer)
@@ -184,7 +199,9 @@ class GameScene extends Phaser.Scene {
         backgroundM0 = this.add.image(0, 0, 'background_0').setOrigin(0, 0); // background (-0 layer)
 
         backgroundStars.setMask(backgroundM2Mask);
+        //#endregion
 
+        //#region TILEMAP
         // create the tilemap
         const map = this.add.tilemap("map");
 
@@ -223,19 +240,20 @@ class GameScene extends Phaser.Scene {
             "Obstacles",
             tileset
         );
-        //obstaclesLayer.setCollisionBetween(0,255);
+        obstaclesLayer.setCollisionBetween(0,255);
+        //#endregion
 
         this.physics.world.setBounds(0, 0, MAP_WIDTH, MAP_HEIGHT);
-        // #endregion
+        //#endregion
 
-        // #region PICKABLES CREATION
+        //#region PICKABLES CREATION
         // spawning the pickables
         const pickables = map.createFromObjects("Pickables");
         pickables.forEach(pickable => {
             pickable.y += 32; // --> offset due to the Tiled origin
             pickable.anims.play(pickable.name); // --> display the right animation based on the object name
         });
-
+        
         const coins = this.physics.add.staticGroup();
         pickables.forEach((pickable) => {
             coins.add(pickable);
@@ -243,10 +261,25 @@ class GameScene extends Phaser.Scene {
         });
         // #endregion
 
+        //#region ENNEMIES CREATION
+        var ennemies = this.physics.add.staticGroup();
+        var ennemy = this.physics.add.staticSprite(320, 1456, 'ennemies', 0);
+        ennemies.add(ennemy);
+        ennemy.play('ennemy_0');
+        //#endregion
+        
         // #region PLAYER CREATION
         player = this.physics.add.sprite(120, 1440, 'player', 0);
         player.setCollideWorldBounds(true);
-        this.physics.add.collider(player, [wallsLayer1, wallsLayer2, wallsLayer3, platformsLayer], () => { // add colision between player and ground surfaces
+        player.setMaxVelocity(maxSpeed, 9999);
+        player.setDragX(dragForce);
+        player.body.setSize(8, 54);
+        player.body.setOffset(12, 10);
+        //#endregion
+
+        //#region COLLISIONS
+        // add colision between player and ground surfaces
+        this.physics.add.collider(player, [wallsLayer1, wallsLayer2, wallsLayer3, platformsLayer], () => {
             if(player.body.blocked.down){
                 canJump = true;
             }
@@ -254,22 +287,14 @@ class GameScene extends Phaser.Scene {
         this.physics.add.collider(player, obstaclesLayer, () => {
             if(DEBUG) DebugObstacle();
         });
-        player.setMaxVelocity(maxSpeed, 9999);
-        player.setDragX(dragForce);
-        player.body.setSize(8, 54);
-        player.body.setOffset(12, 10);
 
         // add colision between player and pickables
-        this.physics.add.overlap(player, pickables, (player_ctx, pickable_ctx) => {
-            pickable_ctx.destroy();
-            var textFeedback = "";
+        this.physics.add.overlap(player, coins, (player_ctx, coin_ctx) => {
+            coin_ctx.destroy();
+            PickCoin();
+            
             var feedbackColor = 0xFFFFFF;
-            if(pickable_ctx.name.includes("coin")){
-                textFeedback = "+1";
-                coinsAmount++;
-                UpdateCoinText();
-            }
-            switch(pickable_ctx.name){
+            switch(coin_ctx.name){
                 case "coin_0":
                     feedbackColor = 0xFBFF0D;
                     break;
@@ -280,10 +305,17 @@ class GameScene extends Phaser.Scene {
                     feedbackColor = 0xFAFF06;
                     break;
                 default:
-                    feedbackColor = 0xFFFFFF;
                     break;
             }
-            this.DisplayTextFeedback(pickable_ctx.x, pickable_ctx.y - 16, textFeedback, feedbackColor);
+            this.DisplayTextFeedback(coin_ctx.x, coin_ctx.y - 16, COIN_FEEDBACK_TEXT, feedbackColor);
+        });
+
+        // add colision between player and ennemies
+        this.physics.add.collider(player, ennemies, (player_ctx, ennemy_ctx) => {
+            this.DisplayTextFeedback(player_ctx.x, player_ctx.y - player.height/2, ENNEMY_FEEDBACK_TEXT, TINT_DAMAGE);
+            TakeDamage();
+        }, () => {
+            return !isInvincible;
         });
         // #endregion
 
@@ -298,11 +330,11 @@ class GameScene extends Phaser.Scene {
         backgroundM1Top.setScrollFactor(.5);
 
         // start HUD scene on top
-        game.scene.start('GameHUD');
+        game.scene.start('GameHUDScene');
 
         // #region Debug
         if(DEBUG){
-            game.scene.start('Debug');
+            game.scene.start('DebugScene');
 
             const debugGraphics = this.add.graphics().setAlpha(0.75);
             obstaclesLayer.renderDebug(debugGraphics, {
@@ -336,12 +368,8 @@ class GameScene extends Phaser.Scene {
     }
 
     update(time){
-        // Input handling through events
-        
         // Horizontal movement
         player.body.setAccelerationX(inputX * accelerationForce);
-
-        
 
         if(inputJump){
             if(canJump){
@@ -351,15 +379,13 @@ class GameScene extends Phaser.Scene {
         }
         
         HandlePlayerSprite();
-
-        //Parallax(cameraGameplay);
     }
 }
 
 // This scene contains the game HUD, it is used to display informations to the player while keeping this logic away from the gameplay
 class GameHUDScene extends Phaser.Scene {
     constructor (){
-        super({key: 'GameHUD', active: false});
+        super({key: 'GameHUDScene', active: false});
     }
 
     // This function is called one time at the beginning of scene start, it is suitable for assets loading
@@ -401,6 +427,12 @@ class GameHUDScene extends Phaser.Scene {
             frameRate: 6,
             repeat: -1
         });
+        this.anims.create({
+            key: 'ui_hearths_0',
+            frames: this.anims.generateFrameNumbers('ui_hearths', {start: 12, end: 15}),
+            frameRate: 6,
+            repeat: -1
+        });
         //#endregion
 
         //#region Coin UI
@@ -418,7 +450,7 @@ class GameHUDScene extends Phaser.Scene {
         ui_coin = this.add.sprite(8, 8).play('ui_coin');
         ui_coin.setOrigin(0, 0);
         
-        ui_hearths = this.add.sprite(96, 15).play('ui_hearths_3');
+        ui_hearths = this.add.sprite(96, 15).play(`ui_hearths_${hearthAmount}`);
         ui_hearths.setOrigin(0, 0);
         // #endregion
 
@@ -441,7 +473,7 @@ class GameHUDScene extends Phaser.Scene {
 // This scene contains the game HUD, it is used to display informations to the player while keeping this logic away from the gameplay
 class DebugScene extends Phaser.Scene {
     constructor (){
-        super({key: 'Debug', active: false});
+        super({key: 'DebugScene', active: false});
 
         this.lastFrameTime = 0;
         this.deltaTime = 0;
@@ -492,12 +524,12 @@ function onGamepadConnect(){
     gamepad.on('up', onButton);
     gamepad.on('move', onButton);
 
-    gamepadConnected = true;
+    isGamepadConnected = true;
 }
 
 function onGamepadDisconnect(){
     console.log("Controller disconnected!");
-    gamepadConnected = false;
+    isGamepadConnected = false;
 
     inputX = 0; // reset the x input
 }
@@ -515,6 +547,20 @@ function onKey(){
 }
 
 function HandlePlayerSprite(){
+    // flip sprite depending on orizontal speed
+    if(player.body.velocity.x < 0){
+        player.setFlipX(true);
+    }
+    else if(player.body.velocity.x > 0){
+        player.setFlipX(false);
+    }
+
+    // skip everything if invincible
+    if(isInvincible){
+        player.anims.play("player_invincible", true);
+        return;
+    }
+
     isMovingVertically = player.body.velocity.y != 0; // calculates if the player is moving on the y axis
     if(isMovingVertically){
         player.anims.play("player_jump", true);
@@ -522,38 +568,38 @@ function HandlePlayerSprite(){
     else {
         player.anims.play("player_move", true);
     }
-
-    if(player.body.velocity.x < 0){
-        player.setFlipX(true);
-    }
-    else if(player.body.velocity.x > 0){
-        player.setFlipX(false);
-    }
 }
 
-function UpdateCoinText() {
+function PickCoin() {
+    coinsAmount++;
     var coinText = "";
     if(String(coinsAmount).length < 2) coinText += "0";
     coinText += String(coinsAmount);
     ui_coinText.setText(coinText);
 }
 
-function Parallax(){
-    var cameraCenter = {x: cameraGameplay.scrollX + (GAME_WIDTH/2), y: cameraGameplay.scrollY + (GAME_HEIGHT/2)};
-    console.log(`%ccamera x: ${cameraCenter.x.toFixed(0)}`, 'background: #AAA;');
-    console.log(`%ccamera y: ${cameraCenter.y.toFixed(0)}`, 'background: #DDD;');
-
-    // set the -2 layer and stars backgrounds position to the camera's position
-    backgroundStars.x = cameraCenter.x;
-    backgroundStars.y = cameraCenter.y;
-    backgroundM2.x = cameraCenter.x;
-    backgroundM2.y = cameraCenter.y;
-
-    // 
-    backgroundM1.x = 400 - cameraCenter.x/2;
-    backgroundM1.y = 450 + cameraCenter.y/2;
+function TakeDamage(){
+    hearthAmount--;
+    if(hearthAmount <= 0){
+        Die();
+        return;
+    }
+    isInvincible = true;
+    player.setTint(TINT_DAMAGE);
+    ui_hearths.play(`ui_hearths_${hearthAmount}`);
+    setTimeout(() => {
+        isInvincible = false; // reset invincible state
+        player.setTint(0xFFFFFF); // reset tint
+    }, INVINCIBLE_DURATION);
 }
 
+function Die(){
+    player.setTint(TINT_DAMAGE);
+    ui_hearths.play(`ui_hearths_0`);
+    game.scene.pause("GameScene");
+
+    console.log('Died!');
+}
 // #endregion
 
 // #region GAME CONFIGURATION
