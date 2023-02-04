@@ -4,6 +4,7 @@ const DEBUG = false;
 const INPUT_ZERO_TOLERANCE = 0.1;
 
 const GRAVITY = 32 ; // (acceleration expressed in m.s-2)
+const ON_WALL_VELOCITY = 10;
 
 const TILE_SIZE = 32;
 const MAP_WIDTH = 1600;
@@ -47,6 +48,7 @@ var inputJump = false;
 var canJump = false;
 var isJumping = false;
 var isMovingVertically = false;
+var onWall = false;
 
 var cameraGameplay, cameraHUD; // the 2 cameras
 
@@ -70,10 +72,11 @@ var isInvincible = false;
 var ui_coin;
 var ui_hearths;
 var ui_coinText;
+var ui_diedText;
+var ui_retryButton;
 // #endregion
 
 // #region GAME SCENES
-
 // This scene contains the gameplay this is the scene the player is interacting in
 class GameScene extends Phaser.Scene {
     constructor (){
@@ -102,7 +105,7 @@ class GameScene extends Phaser.Scene {
         // importing spritesheets
         this.load.spritesheet('pickables','Assets/Sprites/pickablesSpritesheet.png', { frameWidth: 32, frameHeight: 32 }); // for the pickables
         this.load.spritesheet('player','Assets/Sprites/playerSpritesheet.png', { frameWidth: 32, frameHeight: 64 }); // for the player character
-        this.load.spritesheet('ennemies','Assets/Sprites/ennemiesSpritesheet.png', { frameWidth: 32, frameHeight: 32 }); // for the ennemy
+        this.load.spritesheet('ennemies','Assets/Sprites/ennemiesSpritesheet.png', { frameWidth: 22, frameHeight: 19 }); // for the ennemy
     }
 
     // This function is called one time after the preload scene, it is suitable for creating objects instances and generating the static environment
@@ -280,12 +283,13 @@ class GameScene extends Phaser.Scene {
         //#region COLLISIONS
         // add colision between player and ground surfaces
         this.physics.add.collider(player, [wallsLayer1, wallsLayer2, wallsLayer3, platformsLayer], () => {
-            if(player.body.blocked.down){
+            if(player.body.onFloor()){
                 canJump = true;
             }
+            onWall = player.body.onWall();
         });
         this.physics.add.collider(player, obstaclesLayer, () => {
-            if(DEBUG) DebugObstacle();
+            Die();
         });
 
         // add colision between player and pickables
@@ -334,8 +338,6 @@ class GameScene extends Phaser.Scene {
 
         // #region Debug
         if(DEBUG){
-            game.scene.start('DebugScene');
-
             const debugGraphics = this.add.graphics().setAlpha(0.75);
             obstaclesLayer.renderDebug(debugGraphics, {
                 tileColor: null, // Color of non-colliding tiles
@@ -369,16 +371,39 @@ class GameScene extends Phaser.Scene {
 
     update(time){
         // Horizontal movement
-        player.body.setAccelerationX(inputX * accelerationForce);
+        if(!onWall){
+            player.body.setAccelerationX(inputX * accelerationForce);
+        }
+        
+        if(onWall){
+            player.body.setAccelerationX(player.body.acceleration.x);
+        }
 
         if(inputJump){
             if(canJump){
                 canJump = false;
-                player.body.setVelocityY(-inputJump * jumpForce);
+                player.body.setVelocityY(-jumpForce);
+            }
+            if(onWall){
+                player.body.setVelocityY(-jumpForce);
+                player.body.setAccelerationX((player.body.blocked.left-player.body.blocked.right) * 10000);
+                onWall = false;
             }
         }
+
+        
         
         HandlePlayerSprite();
+
+        // deactivate gravity if on wall
+        player.body.setAllowGravity(!player.body.onWall());
+        if(onWall){
+            player.body.setVelocityY(ON_WALL_VELOCITY);
+        }
+
+        onWall = player.body.onWall();
+
+        console.log(player.body.onWall());
     }
 }
 
@@ -398,7 +423,7 @@ class GameHUDScene extends Phaser.Scene {
         // importing the UI spritesheets
         this.load.spritesheet('ui_hearths','Assets/Sprites/ui_hearthSpinningSpritesheet.png', { frameWidth: 67, frameHeight: 18 }); // spinning hearths
         this.load.spritesheet('ui_coin','Assets/Sprites/ui_coinSpinningSpritesheet.png', { frameWidth: 32, frameHeight: 32 }); // spinning coin
-        
+        this.load.spritesheet('ui_btn_retry','Assets/Sprites/ui_retryButton.png', { frameWidth: 52, frameHeight: 36 }); // spinning coin
     }
 
     // This function is called one time after the preload scene, it is suitable for creating objects instances and generating the static environment
@@ -433,7 +458,7 @@ class GameHUDScene extends Phaser.Scene {
             frameRate: 6,
             repeat: -1
         });
-        //#endregion
+        //#endregion Hearth UI
 
         //#region Coin UI
         this.anims.create({
@@ -442,9 +467,19 @@ class GameHUDScene extends Phaser.Scene {
             frameRate: 8,
             repeat: -1
         });
-        //#endregion
+        //#endregion Coin UI
 
-        //#endregion
+        //#region Buttons UI
+        this.anims.create({
+            key: 'ui_btn_retry_released',
+            frames: this.anims.generateFrameNumbers('ui_btn_retry', {start: 0, end: 0})
+        });
+        this.anims.create({
+            key: 'ui_btn_retry_pressed',
+            frames: this.anims.generateFrameNumbers('ui_btn_retry', {start: 1, end: 1})
+        });
+        //#endregion Buttons UI
+        //#endregion ANIMATIONS
 
         // #region UI SPRITES
         ui_coin = this.add.sprite(8, 8).play('ui_coin');
@@ -452,13 +487,30 @@ class GameHUDScene extends Phaser.Scene {
         
         ui_hearths = this.add.sprite(96, 15).play(`ui_hearths_${hearthAmount}`);
         ui_hearths.setOrigin(0, 0);
-        // #endregion
+        // #endregion UI SPRITES
 
         //#region UI TEXT
-        ui_coinText = this.add.bitmapText(48, 10, 'CursedScript', '00', FONT_SIZE_TITLE).setTint(0xFFFFFF);
-        ui_coinText.setOrigin(0, 0);
-        ui_coinText.setDropShadow(2, 2, 0x000000, 1);
-        //#endregion
+        ui_coinText = this.add.bitmapText(48, 10, 'CursedScript', '00', FONT_SIZE_TITLE)
+            .setOrigin(0, 0)
+            .setTint(0xFFFFFF)
+            .setDropShadow(2, 2, 0x000000, 1);
+
+        ui_diedText = this.add.bitmapText(GAME_WIDTH/2, GAME_HEIGHT/2 - TILE_SIZE/2, 'CursedScript', 'YOU DIED!', FONT_SIZE_TITLE)
+            .setOrigin(.5, .5)
+            .setDropShadow(2, 2, 0x000000, 1)
+            .setVisible(false);
+        //#endregion UI TEXT
+
+        //#region UI BUTTONS
+        ui_retryButton = this.add.sprite(GAME_WIDTH/2, GAME_HEIGHT/2 + TILE_SIZE/2).play('ui_btn_retry_released').setInteractive().setVisible(false);
+        ui_retryButton.on("pointerdown", () => {
+            ui_retryButton.play("ui_btn_retry_pressed");
+        });
+        ui_retryButton.on("pointerup", () => {
+            ui_retryButton.play("ui_btn_retry_released");
+            location.reload();
+        });
+        //#endregion UI BUTTONS
     }
 
     update(time){
@@ -469,40 +521,9 @@ class GameHUDScene extends Phaser.Scene {
 
     
 }
+// #endregion GAME SCENES
 
-// This scene contains the game HUD, it is used to display informations to the player while keeping this logic away from the gameplay
-class DebugScene extends Phaser.Scene {
-    constructor (){
-        super({key: 'DebugScene', active: false});
-
-        this.lastFrameTime = 0;
-        this.deltaTime = 0;
-    }
-
-    // This function is called one time at the beginning of scene start, it is suitable for assets loading
-    preload(){
-        console.log("Loading debug scene...");
-    }
-
-    // This function is called one time after the preload scene, it is suitable for creating objects instances and generating the static environment
-    create(){
-        this.fpsText = this.add.bitmapText(8, GAME_HEIGHT - 32, 'CursedScript', 'FPS: ', FONT_SIZE_TITLE).setTint(0xFFFFFF);
-    }
-
-    update(time){
-        this.deltaTime = time - this.lastFrameTime;
-        this.lastFrameTime = time;
-        
-        this.fpsText.setText(`FPS: ${Number.parseFloat(1/(this.deltaTime/1000)).toFixed()}`);
-    }
-}
-// #endregion
-
-// #region FUNCTIONS
-function DebugObstacle(){
-    console.log("Collides with obstacle!");
-}
-
+// #region GLOBAL FUNCTIONS
 // configure the controller when it is connected
 function onGamepadConnect(){
     console.log("Controller connected!");
@@ -522,32 +543,37 @@ function onGamepadConnect(){
     // register to the button press & release events to optimize input handling
     gamepad.on('down', onButton);
     gamepad.on('up', onButton);
-    gamepad.on('move', onButton);
 
     isGamepadConnected = true;
 }
 
+// called when the gamepad is disconnected
 function onGamepadDisconnect(){
     console.log("Controller disconnected!");
+
+    // clear the gamepad
+    gamepad = null;
     isGamepadConnected = false;
 
-    inputX = 0; // reset the x input
+    inputX = 0; // avoid forever moving player when disconnecting the controller while button pressed
 }
 
+// called when any button is pressed/released
 function onButton(){
+    // avoid using conditions to gain performance --> inputX is a calculation between left & right inputs
     inputX = (gamepadButtons.right.pressed) - gamepadButtons.left.pressed;
     inputJump = gamepadButtons.jump.pressed; // + converts bool to int
-    isJumping = false; // resets the isJumping value --> If we are jumping, we released the button, if we were about to jump, the jump will turn it back true
 }
 
+// called when any key is pressed/released
 function onKey(){
+    // avoid using conditions to gain performance --> inputX is a calculation between left & right inputs
     inputX = (keyboardKeys.right.isDown || keyboardKeys.right_arrow.isDown) - (keyboardKeys.left.isDown || keyboardKeys.left_arrow.isDown);
     inputJump = (keyboardKeys.jump.isDown || keyboardKeys.jump_arrow.isDown); // + converts bool to int
-    isJumping = false;
 }
 
 function HandlePlayerSprite(){
-    // flip sprite depending on orizontal speed
+    // flip sprite depending on horizontal speed
     if(player.body.velocity.x < 0){
         player.setFlipX(true);
     }
@@ -555,13 +581,14 @@ function HandlePlayerSprite(){
         player.setFlipX(false);
     }
 
-    // skip everything if invincible
+    // skip vertical speed calculation if invincible
     if(isInvincible){
         player.anims.play("player_invincible", true);
         return;
     }
-
-    isMovingVertically = player.body.velocity.y != 0; // calculates if the player is moving on the y axis
+    
+    // calculate if the player is moving on the y axis & play animation
+    isMovingVertically = player.body.velocity.y != 0; 
     if(isMovingVertically){
         player.anims.play("player_jump", true);
     }
@@ -571,6 +598,7 @@ function HandlePlayerSprite(){
 }
 
 function PickCoin() {
+    // add a coin to the coinsAmount & make sure the UI displays 2 digits (ex: "1" -> "01")
     coinsAmount++;
     var coinText = "";
     if(String(coinsAmount).length < 2) coinText += "0";
@@ -579,28 +607,47 @@ function PickCoin() {
 }
 
 function TakeDamage(){
+    // remove a hearth and check if player is still alive
     hearthAmount--;
     if(hearthAmount <= 0){
         Die();
         return;
     }
+
+    // update the hearths ui
+    ui_hearths.play(`ui_hearths_${hearthAmount}`);
+
+    // if still alive, make player invincible for INVINCIBLE_DURATION seconds
     isInvincible = true;
     player.setTint(TINT_DAMAGE);
-    ui_hearths.play(`ui_hearths_${hearthAmount}`);
     setTimeout(() => {
         isInvincible = false; // reset invincible state
         player.setTint(0xFFFFFF); // reset tint
+        if(hearthAmount <= 0){
+            player.setTint(TINT_DAMAGE);
+        }
     }, INVINCIBLE_DURATION);
 }
 
 function Die(){
-    player.setTint(TINT_DAMAGE);
+    // remove all hearths
+    hearthAmount = 0;
     ui_hearths.play(`ui_hearths_0`);
+
+    // resets player anim & apply a death color tint
+    player.anims.play("player_move", true);
+    player.setTint(TINT_DAMAGE);
+    
+    // pause gamescene
     game.scene.pause("GameScene");
+    
+    // show the retry button & informations
+    ui_retryButton.setVisible(true);
+    ui_diedText.setVisible(true);
 
     console.log('Died!');
 }
-// #endregion
+// #endregion GLOBAL FUNCTIONS
 
 // #region GAME CONFIGURATION
 const config = {
@@ -619,8 +666,7 @@ const config = {
     },
     scene: [
         GameScene,
-        GameHUDScene,
-        DebugScene
+        GameHUDScene
     ],
     input: {
         gamepad: true,
