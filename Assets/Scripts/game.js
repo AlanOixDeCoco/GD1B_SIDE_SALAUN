@@ -6,6 +6,8 @@ const INPUT_ZERO_TOLERANCE = 0.1;
 const GRAVITY = 32 ; // (acceleration expressed in m.s-2)
 
 const TILE_SIZE = 32;
+const MAP_WIDTH = 1600;
+const MAP_HEIGHT = 1600;
 
 const GAME_WIDTH = 480;
 const GAME_HEIGHT = 320;
@@ -21,9 +23,14 @@ const PICK_FEEDBACK_DISTANCE = 12; // text movement distance
 const PICK_FEEDBACK_FRAMES = 6; // text movement frames
 
 const COIN_FEEDBACK_TEXT = "+1";
+
+const TINT_BACKGROUND = 0x666666;
+
+const COLORMASK_BACKGROUND_LAYER1 = 0x000000;
+const COLORMASK_BACKGROUND_LAYER2 = 0x444444;
 // #endregion
 
-// #region GAME VARIABLES
+// #region VARIABLES
 var player;
 var accelerationForce = 1200;
 var jumpForce = 11 * TILE_SIZE;
@@ -37,13 +44,19 @@ var canJump = false;
 var isJumping = false;
 var isMovingVertically = false;
 
-var cameraGameplay, cameraHUD;
+var cameraGameplay, cameraHUD; // the 2 cameras
 
 var keyboardKeys;
 
 var gamepadConnected = false;
-var gamepad;
-var gamepadButtons;
+var gamepad; // stores used controller
+var gamepadButtons; // assigned when a device is connected
+
+var backgroundStars; // stars background
+var backgroundM1Bottom; // -1 layer background (bottom part)
+var backgroundM1Top; // -1 layer background (top part)
+var backgroundM2; // -2 layer background
+var backgroundM0; // -0 layer background
 
 var coinsAmount = 0;
 
@@ -69,8 +82,11 @@ class GameScene extends Phaser.Scene {
         this.load.bitmapFont('CursedScript', 'Assets/Fonts/CursedScript.png', 'Assets/Fonts/CursedScript.fnt');
 
         // importing backgrounds
+        this.load.image('background_stars', 'Assets/Sprites/background_stars.png');
         this.load.image('background_m2', 'Assets/Sprites/background_-2.png');
-        this.load.image('background_m1', 'Assets/Sprites/background_-1.png');
+        this.load.image('background_m1_bottom', 'Assets/Sprites/background_-1_bottom.png');
+        this.load.image('background_m1_top', 'Assets/Sprites/background_-1_top.png');
+        this.load.image('background_0', 'Assets/Sprites/background_0.png')
 
         // importing Tiled map ...
         this.load.tilemapTiledJSON('map', 'Assets/Maps/level_00.tmj');
@@ -85,10 +101,10 @@ class GameScene extends Phaser.Scene {
     // This function is called one time after the preload scene, it is suitable for creating objects instances and generating the static environment
     create(){
         // creating a new camera to render the gameplay
-        cameraGameplay = this.cameras.main;
+        cameraGameplay = this.cameras.add(0, 0, GAME_WIDTH, GAME_HEIGHT, true, "Camera Gameplay");
         cameraGameplay.setRoundPixels(true);
-        cameraGameplay.setBounds(0, 0, 1600, 1600); // set the camera border to fit in the tilemap dimensions
-        cameraGameplay.setBackgroundColor(0xFF0000);
+        cameraGameplay.setBounds(0, 0, MAP_WIDTH, MAP_HEIGHT); // set the camera border to fit in the tilemap dimensions
+        cameraGameplay.setBackgroundColor(TINT_BACKGROUND);
 
         // #region ANIMATIONS
         // pickables
@@ -149,10 +165,25 @@ class GameScene extends Phaser.Scene {
 
         // #region MAP GENERATION
         // create the backgrounds
-        const backgroundM2 = this.add.image(0, 0, 'background_m2'); // background (-2 layer)
-        backgroundM2.setOrigin(0, 0);
-        const backgroundM1 = this.add.image(0, 0, 'background_m1'); // background (-1 layer)
-        backgroundM1.setOrigin(0, 0);
+        backgroundStars = this.add.image(0, 0, 'background_stars').setOrigin(0, 0); // background (-3 layer)
+
+        backgroundM2 = this.add.image(0, 0, 'background_m2').setOrigin(0, 0); // background (-2 layer)
+        backgroundM2.setTint(COLORMASK_BACKGROUND_LAYER2);
+        backgroundM2.setBlendMode("MULTIPLY");
+        var backgroundM2Mask = backgroundM2.createBitmapMask();
+        backgroundM2Mask.invertAlpha = true;
+        
+        backgroundM1Bottom = this.add.image(0, MAP_HEIGHT/2 + GAME_HEIGHT/2, 'background_m1_bottom').setOrigin(0, 1); // background (-1 layer)
+        backgroundM1Bottom.setTint(COLORMASK_BACKGROUND_LAYER1);
+        backgroundM1Bottom.setBlendMode("MULTIPLY");
+        
+        backgroundM1Top = this.add.image(0, 0, 'background_m1_top').setOrigin(0, 0); // background (-1 layer)
+        backgroundM1Top.setTint(COLORMASK_BACKGROUND_LAYER1);
+        backgroundM1Top.setBlendMode("NORMAL");
+
+        backgroundM0 = this.add.image(0, 0, 'background_0').setOrigin(0, 0); // background (-0 layer)
+
+        backgroundStars.setMask(backgroundM2Mask);
 
         // create the tilemap
         const map = this.add.tilemap("map");
@@ -173,7 +204,7 @@ class GameScene extends Phaser.Scene {
             "Walls/Walls_2",
             tileset
         );
-        wallsLayer2.setCollisionByExclusion();
+        wallsLayer2.setCollisionBetween(0,255);
         const wallsLayer3 = map.createLayer(
             "Walls/Walls_3",
             tileset
@@ -192,9 +223,9 @@ class GameScene extends Phaser.Scene {
             "Obstacles",
             tileset
         );
-        obstaclesLayer.setCollisionBetween(0,255);
+        //obstaclesLayer.setCollisionBetween(0,255);
 
-        this.physics.world.setBounds(0, 0, 1600, 1600);
+        this.physics.world.setBounds(0, 0, MAP_WIDTH, MAP_HEIGHT);
         // #endregion
 
         // #region PICKABLES CREATION
@@ -223,8 +254,8 @@ class GameScene extends Phaser.Scene {
         });
         player.setMaxVelocity(maxSpeed, 9999);
         player.setDragX(dragForce);
-        player.body.setSize(8, 56);
-        player.body.setOffset(12, 8);
+        player.body.setSize(8, 54);
+        player.body.setOffset(12, 10);
 
         // add colision between player and pickables
         this.physics.add.overlap(player, pickables, (player_ctx, pickable_ctx) => {
@@ -250,9 +281,19 @@ class GameScene extends Phaser.Scene {
                     feedbackColor = 0xFFFFFF;
                     break;
             }
-            this.DisplayTextFeedback(pickable_ctx.x, pickable_ctx.y, textFeedback, feedbackColor);
+            this.DisplayTextFeedback(pickable_ctx.x, pickable_ctx.y - 16, textFeedback, feedbackColor);
         });
         // #endregion
+
+        // make the camera follow the player
+        cameraGameplay.startFollow(player, false, CAMERA_HORIZONTAL_SMOOTH, CAMERA_VERTICAL_SMOOTH);
+        //cameraGameplay.setZoom(.2);
+
+        // set parallax backgrounds scroll factors and initial positions
+        backgroundStars.setScrollFactor(0);
+        backgroundM2.setScrollFactor(0);
+        backgroundM1Bottom.setScrollFactor(.5);
+        backgroundM1Top.setScrollFactor(.5);
 
         // start HUD scene on top
         game.scene.start('GameHUD');
@@ -273,9 +314,6 @@ class GameScene extends Phaser.Scene {
         // keyboard events
         this.input.keyboard.on('keydown', onKey);
         this.input.keyboard.on('keyup', onKey);
-
-        cameraGameplay.startFollow(player, false, CAMERA_HORIZONTAL_SMOOTH, CAMERA_VERTICAL_SMOOTH);
-        cameraGameplay.setZoom(1);
 
         //#region GameplayScene functions
         // Displays a text feedback inside the scene to 
@@ -304,14 +342,18 @@ class GameScene extends Phaser.Scene {
         if(canJump){
             canJump = false;
             isJumping = true;
-            player.body.setVelocityY(-inputJump * jumpForce);
+            
         }
+
+        isJumping = inputJump;
+        if(isJumping)
+            player.body.setVelocityY(-inputJump * jumpForce);
 
         isJumping = (-player.body.velocity.y > 0) && isJumping; // calculates if the player is still jumping
         
         HandlePlayerSprite();
 
-        //this.MoveParallax(player);
+        //Parallax(cameraGameplay);
     }
 }
 
@@ -337,7 +379,7 @@ class GameHUDScene extends Phaser.Scene {
     // This function is called one time after the preload scene, it is suitable for creating objects instances and generating the static environment
     create(){
         // creating a new camera to render the HUD
-        cameraHUD = this.cameras.main;
+        cameraHUD = this.cameras.add(0, 0, GAME_WIDTH, GAME_HEIGHT, true, "Camera HUD");
         cameraHUD.setRoundPixels(true);
 
         //#region ANIMATIONS
@@ -441,10 +483,15 @@ function onGamepadConnect(){
         'jump': gamepad.buttons[0],
         'pause': gamepad.buttons[9]
     };
+    
+    gamepadAxis = {
+        'leftStick': gamepad.axes[0]
+    };
 
     // register to the button press & release events to optimize input handling
     gamepad.on('down', onButton);
     gamepad.on('up', onButton);
+    gamepad.on('move', onButton);
 
     gamepadConnected = true;
 }
@@ -457,7 +504,7 @@ function onGamepadDisconnect(){
 }
 
 function onButton(){
-    inputX = gamepadButtons.right.pressed - gamepadButtons.left.pressed;
+    inputX = (gamepadButtons.right.pressed) - gamepadButtons.left.pressed;
     inputJump = gamepadButtons.jump.pressed; // + converts bool to int
     isJumping = false; // resets the isJumping value --> If we are jumping, we released the button, if we were about to jump, the jump will turn it back true
 }
@@ -492,6 +539,21 @@ function UpdateCoinText() {
     ui_coinText.setText(coinText);
 }
 
+function Parallax(){
+    var cameraCenter = {x: cameraGameplay.scrollX + (GAME_WIDTH/2), y: cameraGameplay.scrollY + (GAME_HEIGHT/2)};
+    console.log(`%ccamera x: ${cameraCenter.x.toFixed(0)}`, 'background: #AAA;');
+    console.log(`%ccamera y: ${cameraCenter.y.toFixed(0)}`, 'background: #DDD;');
+
+    // set the -2 layer and stars backgrounds position to the camera's position
+    backgroundStars.x = cameraCenter.x;
+    backgroundStars.y = cameraCenter.y;
+    backgroundM2.x = cameraCenter.x;
+    backgroundM2.y = cameraCenter.y;
+
+    // 
+    backgroundM1.x = 400 - cameraCenter.x/2;
+    backgroundM1.y = 450 + cameraCenter.y/2;
+}
 
 // #endregion
 
