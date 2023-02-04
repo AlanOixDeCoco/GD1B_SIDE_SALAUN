@@ -402,8 +402,6 @@ class GameScene extends Phaser.Scene {
         }
 
         onWall = player.body.onWall();
-
-        console.log(player.body.onWall());
     }
 }
 
