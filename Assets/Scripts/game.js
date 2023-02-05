@@ -33,6 +33,8 @@ const TINT_DAMAGE = 0xFF0000;
 
 const COLORMASK_BACKGROUND_LAYER1 = 0x000000;
 const COLORMASK_BACKGROUND_LAYER2 = 0x444444;
+
+const ENNEMY_SPEED = 32; // pixels/second
 // #endregion
 
 // #region VARIABLES
@@ -63,6 +65,8 @@ var backgroundM1Bottom; // -1 layer background (bottom part)
 var backgroundM1Top; // -1 layer background (top part)
 var backgroundM2; // -2 layer background
 var backgroundM0; // -0 layer background
+
+var ennemies;
 
 var coinsAmount = 0;
 var hearthAmount = 3;
@@ -254,7 +258,7 @@ class GameScene extends Phaser.Scene {
         const pickables = map.createFromObjects("Pickables");
         pickables.forEach(pickable => {
             pickable.y += 32; // --> offset due to the Tiled origin
-            pickable.anims.play(pickable.name); // --> display the right animation based on the object name
+            pickable.play(pickable.name); // --> display the right animation based on the object name
         });
         
         const coins = this.physics.add.staticGroup();
@@ -265,10 +269,29 @@ class GameScene extends Phaser.Scene {
         // #endregion
 
         //#region ENNEMIES CREATION
-        var ennemies = this.physics.add.staticGroup();
-        var ennemy = this.physics.add.staticSprite(320, 1456, 'ennemies', 0);
-        ennemies.add(ennemy);
-        ennemy.play('ennemy_0');
+        // setting the ennemies spawn point and destination
+        const ennemies_positions = [
+            {name: 'ennemy_0', start: {x: 160, y: 1280}, end: {x:480, y: 1280}},
+            {name: 'ennemy_0', start: {x:576, y: 480}, end: {x:384, y: 480}},
+            {name: 'ennemy_0', start: {x:608, y: 480}, end: {x:928, y: 480}},
+            {name: 'ennemy_0', start: {x: 1344, y: 928}, end: {x: 1536, y: 928}},
+            {name: 'ennemy_0', start: {x: 608, y: 1024}, end: {x: 800, y: 1024}},
+            {name: 'ennemy_0', start: {x: 1120, y: 1472}, end: {x: 1216, y: 1472}},
+        ];
+        ennemies = [];
+        ennemies_positions.forEach((ennemy_positions) => {
+            var ennemy = this.physics.add.sprite(ennemy_positions.start.x, ennemy_positions.start.y, 'ennemies', 0).setOrigin(.5, 1).play('ennemy_0');
+            ennemy.body.setAllowGravity(false);
+            ennemy.start = ennemy_positions.start;
+            ennemy.end = ennemy_positions.end;
+            ennemy.forward = ennemy_positions.end.x > ennemy_positions.start.x;
+            ennemies.push(ennemy);
+        });
+
+
+        //var ennemy = this.physics.add.staticSprite(320, 1462, 'ennemies', 0);
+        //ennemies.add(ennemy);
+        //ennemy.play('ennemy_0');
         //#endregion
         
         // #region PLAYER CREATION
@@ -316,9 +339,13 @@ class GameScene extends Phaser.Scene {
 
         // add colision between player and ennemies
         this.physics.add.collider(player, ennemies, (player_ctx, ennemy_ctx) => {
+            if(player_ctx.body.bottom <= ennemy_ctx.body.top){
+                ennemy_ctx.destroy();
+                return;
+            }
             this.DisplayTextFeedback(player_ctx.x, player_ctx.y - player.height/2, ENNEMY_FEEDBACK_TEXT, TINT_DAMAGE);
             TakeDamage();
-        }, () => {
+        }, (player_ctx, ennemy_ctx) => {
             return !isInvincible;
         });
         // #endregion
@@ -367,9 +394,17 @@ class GameScene extends Phaser.Scene {
             }, PICK_FEEDBACK_TIMEOUT);
         }
         //#endregion
+
+        //time variables
+        this.lastFrameTime = 0;
+        this.deltaTime = 0;
     }
 
     update(time){
+        this.deltaTime = time - this.lastFrameTime;
+        this.deltaTime/=1000; // convert to ms
+        this.lastFrameTime = time;
+
         // Horizontal movement
         if(!onWall){
             player.body.setAccelerationX(inputX * accelerationForce);
@@ -391,8 +426,6 @@ class GameScene extends Phaser.Scene {
             }
         }
 
-        
-        
         HandlePlayerSprite();
 
         // deactivate gravity if on wall
@@ -402,6 +435,18 @@ class GameScene extends Phaser.Scene {
         }
 
         onWall = player.body.onWall();
+
+        // move the ennemies back and forth from start to end in both directions at ENNEMY_SPEED
+        ennemies.forEach((ennemy) => {
+            if(ennemy.forward){
+                ennemy.body?.setVelocityX(ENNEMY_SPEED);
+                ennemy.forward = !(ennemy.x >= ennemy.end.x);
+            }
+            else {
+                ennemy.body?.setVelocityX(-ENNEMY_SPEED);
+                ennemy.forward = (ennemy.x <= ennemy.start.x);
+            }
+        });
     }
 }
 
