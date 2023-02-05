@@ -67,6 +67,7 @@ var backgroundM2; // -2 layer background
 var backgroundM0; // -0 layer background
 
 var ennemies;
+var endFlag;
 
 var coinsAmount = 0;
 var hearthAmount = 3;
@@ -76,7 +77,7 @@ var isInvincible = false;
 var ui_coin;
 var ui_hearths;
 var ui_coinText;
-var ui_diedText;
+var ui_gameoverText;
 var ui_retryButton;
 // #endregion
 
@@ -110,6 +111,7 @@ class GameScene extends Phaser.Scene {
         this.load.spritesheet('pickables','Assets/Sprites/pickablesSpritesheet.png', { frameWidth: 32, frameHeight: 32 }); // for the pickables
         this.load.spritesheet('player','Assets/Sprites/playerSpritesheet.png', { frameWidth: 32, frameHeight: 64 }); // for the player character
         this.load.spritesheet('ennemies','Assets/Sprites/ennemiesSpritesheet.png', { frameWidth: 22, frameHeight: 19 }); // for the ennemy
+        this.load.spritesheet('end','Assets/Sprites/endSpritesheet.png', { frameWidth: 32, frameHeight: 32 }); // for the end flag
     }
 
     // This function is called one time after the preload scene, it is suitable for creating objects instances and generating the static environment
@@ -219,11 +221,6 @@ class GameScene extends Phaser.Scene {
         );
         
         // create all the walls layers
-        const wallsLayer1 = map.createLayer(
-            "Walls/Walls_1",
-            tileset
-        );
-        wallsLayer1.setCollisionBetween(0,255);
         const wallsLayer2 = map.createLayer(
             "Walls/Walls_2",
             tileset
@@ -234,6 +231,11 @@ class GameScene extends Phaser.Scene {
             tileset
         );
         wallsLayer3.setCollisionBetween(0,255);
+        const wallsLayer1 = map.createLayer(
+            "Walls/Walls_1",
+            tileset
+        );
+        wallsLayer1.setCollisionBetween(0,255);
 
         // then the platforms layer
         const platformsLayer = map.createLayer(
@@ -272,7 +274,7 @@ class GameScene extends Phaser.Scene {
         // setting the ennemies spawn point and destination
         const ennemies_positions = [
             {name: 'ennemy_0', start: {x: 160, y: 1280}, end: {x:480, y: 1280}},
-            {name: 'ennemy_0', start: {x:576, y: 480}, end: {x:384, y: 480}},
+            {name: 'ennemy_0', start: {x:384, y: 480}, end: {x:576, y: 480}},
             {name: 'ennemy_0', start: {x:608, y: 480}, end: {x:928, y: 480}},
             {name: 'ennemy_0', start: {x: 1344, y: 928}, end: {x: 1536, y: 928}},
             {name: 'ennemy_0', start: {x: 608, y: 1024}, end: {x: 800, y: 1024}},
@@ -284,14 +286,13 @@ class GameScene extends Phaser.Scene {
             ennemy.body.setAllowGravity(false);
             ennemy.start = ennemy_positions.start;
             ennemy.end = ennemy_positions.end;
-            ennemy.forward = ennemy_positions.end.x > ennemy_positions.start.x;
+            ennemy.forward = ennemy_positions.start.x < ennemy_positions.end.x;
             ennemies.push(ennemy);
         });
+        //#endregion
 
-
-        //var ennemy = this.physics.add.staticSprite(320, 1462, 'ennemies', 0);
-        //ennemies.add(ennemy);
-        //ennemy.play('ennemy_0');
+        // #region END FLAG CREATION
+        endFlag = this.physics.add.staticSprite(1504, 1184, 'end', 0).setOrigin(.5, 1);
         //#endregion
         
         // #region PLAYER CREATION
@@ -348,6 +349,11 @@ class GameScene extends Phaser.Scene {
         }, (player_ctx, ennemy_ctx) => {
             return !isInvincible;
         });
+
+        // add colision between player and end flag
+        this.physics.add.collider(player, endFlag, () => {
+            Win();
+        });
         // #endregion
 
         // make the camera follow the player
@@ -398,6 +404,9 @@ class GameScene extends Phaser.Scene {
         //time variables
         this.lastFrameTime = 0;
         this.deltaTime = 0;
+
+        //cameraGameplay.setZoom(.2)
+        //player.setPosition(1430, 1100);
     }
 
     update(time){
@@ -538,7 +547,7 @@ class GameHUDScene extends Phaser.Scene {
             .setTint(0xFFFFFF)
             .setDropShadow(2, 2, 0x000000, 1);
 
-        ui_diedText = this.add.bitmapText(GAME_WIDTH/2, GAME_HEIGHT/2 - TILE_SIZE/2, 'CursedScript', 'YOU DIED!', FONT_SIZE_TITLE)
+        ui_gameoverText = this.add.bitmapText(GAME_WIDTH/2, GAME_HEIGHT/2 - TILE_SIZE/2, 'CursedScript', '', FONT_SIZE_TITLE)
             .setOrigin(.5, .5)
             .setDropShadow(2, 2, 0x000000, 1)
             .setVisible(false);
@@ -673,6 +682,8 @@ function TakeDamage(){
 }
 
 function Die(){
+    console.log('Died!');
+
     // remove all hearths
     hearthAmount = 0;
     ui_hearths.play(`ui_hearths_0`);
@@ -686,9 +697,20 @@ function Die(){
     
     // show the retry button & informations
     ui_retryButton.setVisible(true);
-    ui_diedText.setVisible(true);
+    ui_gameoverText.setText("You died!");
+    ui_gameoverText.setVisible(true);
+}
 
-    console.log('Died!');
+function Win(){
+    console.log('Won!');
+
+    // pause gamescene
+    game.scene.pause("GameScene");
+
+    // show the retry button & informations
+    ui_retryButton.setVisible(true);
+    ui_gameoverText.setText("You won!");
+    ui_gameoverText.setVisible(true);
 }
 // #endregion GLOBAL FUNCTIONS
 
