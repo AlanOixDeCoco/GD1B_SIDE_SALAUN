@@ -48,7 +48,6 @@ var inputX = 0;
 var inputJump = false;
 
 var canJump = false;
-var isJumping = false;
 var isMovingVertically = false;
 var onWall = false;
 
@@ -311,6 +310,7 @@ class GameScene extends Phaser.Scene {
                 canJump = true;
             }
             onWall = player.body.onWall();
+            player.body.setBounceY(0);
         });
         this.physics.add.collider(player, obstaclesLayer, () => {
             Die();
@@ -341,6 +341,7 @@ class GameScene extends Phaser.Scene {
         // add colision between player and ennemies
         this.physics.add.collider(player, ennemies, (player_ctx, ennemy_ctx) => {
             if(player_ctx.body.bottom <= ennemy_ctx.body.top){
+                player.body.setBounceY(1);
                 ennemy_ctx.destroy();
                 return;
             }
@@ -711,6 +712,10 @@ function Win(){
     ui_retryButton.setVisible(true);
     ui_gameoverText.setText("You won!");
     ui_gameoverText.setVisible(true);
+}
+
+function ChangeGravity(gravity){
+    game.scene.getScene('GameScene').physics.world.gravity.y = gravity;
 }
 // #endregion GLOBAL FUNCTIONS
 
